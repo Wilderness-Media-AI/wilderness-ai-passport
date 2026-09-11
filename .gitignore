@@ -1,0 +1,17 @@
+build/
+sdkconfig
+sdkconfig.old
+managed_components/
+.vscode/
+.idea/
+private-profiles/
+build-*/
+device-backups/
+recordings/
+companion-macos/build/
+companion-macos/*.app/
+companion-macos/WildernessMic
+*.wav
+*.bin
+*.elf
+*.map
