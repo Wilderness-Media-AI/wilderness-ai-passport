@@ -16,7 +16,7 @@ Use ESP-IDF 5.5.3. A real employee build must pass an explicit profile path:
 idf.py -B build-employee-name \
   -D BADGE_PROFILE_DIR="$PWD/private-profiles/employee-name" build
 idf.py -B build-employee-name merge-bin \
-  -o build-employee-name/Wilderness-AI-Passport-full.bin
+  -o "$PWD/build-employee-name/Wilderness-AI-Passport-full.bin"
 python3 tools/verify_firmware.py build-employee-name
 ```
 
@@ -48,8 +48,14 @@ Install BlackHole 2ch separately, build `WildernessMic.app`, open it, and grant 
 - Identity, services, brand, battery, and large WeChat QR render correctly.
 - Normal pages dim to 10% after 3 seconds and wake without an accidental action.
 - Voice mode enters on a long `UP`, stays bright for 60 seconds, records while `UP` is held, sends on `DOWN`, and exits on a short `OK`.
+- From badge mode, a long `DOWN` calls the other test badge without requiring it to enter Radio first; the receiving display wakes and opens Radio automatically, and the caller reaches a connected state after `CALL_ACK`.
+- Radio stays bright for 60 seconds, transmits while `UP` is held, returns to listening on release, and a short `OK` on either end returns both devices to low-power badge standby. Verify the same result after the 30-second no-voice timeout.
+- Entering the voice-input page suspends ESP-NOW standby; leaving it resumes call standby. Badge/Radio modes must not advertise or retain a `Wilderness Mic` BLE connection.
+- Both badges pass 20 alternating talk rounds, simultaneous-PTT arbitration, peer power-cycle recovery, and return to badge/BLE voice modes without a panic or stuck audio owner.
 - The companion reconnects after Bluetooth interruption.
 - A diagnostic WAV has intelligible speech and reports zero dropped blocks.
 - The dictation app receives real text from the badge microphone.
 - The pre-flash and post-flash `cardid` files are identical.
 - The independently programmed NFC URL opens the intended website on an iPhone and an Android phone.
+
+The current radio protocol is an unencrypted fixed broadcast room. Complete encrypted pairing and unicast peer control before public-event deployment.

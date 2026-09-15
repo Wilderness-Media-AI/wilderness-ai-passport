@@ -2,9 +2,11 @@ set(APP_SRCS
     "main.c"
     "badge_idle_logic.c"
     "badge_voice_logic.c"
+    "badge_walkie_logic.c"
     "badge_audio_owner.c"
     "badge_adpcm.c"
     "badge_ble_mic.c"
+    "badge_walkie_radio.c"
     "wilderness_badge.c"
     "wilderness_logo.c"
     "wilderness_services_cn.c"
@@ -27,7 +29,7 @@ idf_component_register(
     SRCS ${APP_SRCS}
     INCLUDE_DIRS ${APP_INCLUDE_DIRS}
     REQUIRES bsp
-    PRIV_REQUIRES esp_timer bt nvs_flash
+    PRIV_REQUIRES esp_timer bt nvs_flash esp_wifi esp_event
 )
 
 if(BADGE_PROFILE_ACTIVE)

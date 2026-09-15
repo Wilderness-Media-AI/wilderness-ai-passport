@@ -16,7 +16,7 @@
 idf.py -B build-employee-name \
   -D BADGE_PROFILE_DIR="$PWD/private-profiles/employee-name" build
 idf.py -B build-employee-name merge-bin \
-  -o build-employee-name/Wilderness-AI-Passport-full.bin
+  -o "$PWD/build-employee-name/Wilderness-AI-Passport-full.bin"
 python3 tools/verify_firmware.py build-employee-name
 ```
 
@@ -48,8 +48,14 @@ MAC 不一致时，保护脚本会拒绝继续。
 - 身份页、中文服务页、品牌页、电量和大尺寸微信二维码显示正确。
 - 普通页面 3 秒后降至 10% 亮度，第一次完整按键手势只唤醒，不误触功能。
 - 长按 `UP` 进入语音页，页面 60 秒后才降亮；按住 `UP` 录音，`DOWN` 发送，短按 `OK` 返回。
+- 工牌模式长按 `DOWN` 即可呼叫另一台测试工牌，对方无需先手动进入 Radio；接收端应自动亮屏并打开 Radio，呼叫端收到 `CALL_ACK` 后显示连接。
+- 对讲页 60 秒后才降亮；按住 `UP` 发言，松开恢复收听。任意一方短按 `OK` 后，双方都应回到低功耗工牌待机；同样验证 30 秒无语音活动超时。
+- 进入语音输入页会暂停 ESP-NOW 呼叫待机，退出后恢复；工牌和 Radio 模式不应广播或保持 `Wilderness Mic` BLE 连接。
+- 两台设备通过 20 轮交替对讲、同时抢麦裁决、对端重启后恢复，且返回工牌和蓝牙语音模式后无 panic、无音频占用卡死。
 - 蓝牙中断后 companion 能自动重连。
 - 诊断 WAV 语音清晰，丢块数为 0。
 - 豆包输入法能收到来自工牌麦克风的真实文字。
 - 刷写前后的 `cardid` 文件逐字节一致。
 - 单独写入的 NFC 链接能分别在 iPhone 和 Android 手机上打开正确网站。
+
+当前对讲协议是未加密的固定广播房间。投入公开活动前，必须完成加密配对和单播对端管理。

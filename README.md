@@ -4,7 +4,7 @@
 
 # WILDERNESS AI Passport
 
-Reusable firmware and a native macOS companion that turn a FoloToy AI Passport into both a WILDERNESS employee badge and a push-to-talk input device for desktop dictation.
+Reusable firmware and a native macOS companion that turn a FoloToy AI Passport into a WILDERNESS employee badge, a push-to-talk input device for desktop dictation, and a short-range direct walkie-talkie.
 
 ## What it does
 
@@ -25,6 +25,16 @@ Reusable firmware and a native macOS companion that turn a FoloToy AI Passport i
 - Audio is 16 kHz, 16-bit, mono, compressed as independent 100 ms IMA-ADPCM blocks.
 
 The current companion is for macOS and has been tested with Doubao IME through BlackHole 2ch. It can also save each session as a WAV file for diagnostics.
+
+### Walkie-talkie mode (experimental)
+
+- In badge mode, the radio stays in low-power call standby. Hold `DOWN` to send a 1.5-second call burst; a compatible nearby badge wakes and opens WILDERNESS RADIO automatically.
+- Hold `UP` to talk and release it to listen. Click `OK` to return to badge mode.
+- Badges communicate directly over ESP-NOW on Wi-Fi channel 6; no phone, Mac, router, or cloud service is required.
+- Either badge can end the session with `OK`; both return to badge standby. A session with no voice activity also ends after 30 seconds.
+- Badge standby listens for calls in a 40 ms window every 500 ms. The BLE microphone transport is suspended during radio standby and sessions, and radio standby is suspended while the voice-input page is active.
+- Audio is 16 kHz, 16-bit, mono in independent 25 ms IMA-ADPCM frames. The radio page waits 60 seconds before dimming.
+- Protocol V2 uses a fixed, unencrypted broadcast room for two-device lab validation. Do not treat it as private or deploy it at a public event until encrypted pairing and unicast peers are implemented.
 
 ## Requirements
 
@@ -88,7 +98,7 @@ swiftc -warnings-as-errors companion-macos/WildernessMic.swift \
   -framework CoreBluetooth -o /tmp/WildernessMic
 ```
 
-Firmware build success is not device acceptance. Check boot logs, display, buttons, BLE reconnect, microphone audio, dictation output, power behavior, and the protected `cardid` on each physical unit.
+Firmware build success is not device acceptance. Check boot logs, display, buttons, BLE reconnect, microphone audio, dictation output, power behavior, radio discovery and two-way audio, and the protected `cardid` on each physical unit.
 
 ## License and attribution
 

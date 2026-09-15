@@ -3,6 +3,8 @@
 #include "badge_idle_logic.h"
 #include "badge_ble_mic.h"
 #include "badge_voice_logic.h"
+#include "badge_walkie_logic.h"
+#include "badge_walkie_radio.h"
 #include "bsp_battery.h"
 #include "bsp_display.h"
 #include "wilderness_logo.h"
@@ -60,6 +62,10 @@ static bool s_voice_sent;
 static esp_timer_handle_t s_idle_off_timer;
 static badge_idle_logic_t s_idle_logic;
 static badge_voice_logic_t s_voice_logic;
+static badge_walkie_logic_t s_walkie_logic;
+
+static void render(void);
+static void restart_idle_timer(int timeout_seconds);
 
 static lv_obj_t *label(lv_obj_t *parent, const char *text, const lv_font_t *font,
                        uint32_t color, int x, int y)
@@ -201,6 +207,48 @@ static void page_voice(lv_obj_t *parent)
                    COLOR_PAPER, 285);
 }
 
+static void page_walkie(lv_obj_t *parent)
+{
+    badge_walkie_radio_status_t status;
+    badge_walkie_radio_get_status(&status);
+    bool talking = status.local_talking || status.remote_talking;
+    uint32_t accent = talking ? COLOR_GREEN : COLOR_PAPER;
+    const char *main_text = "RADIO";
+    const char *state_text = "STARTING";
+
+    if (status.state == BADGE_WALKIE_RADIO_ERROR) {
+        state_text = "RADIO ERROR";
+    } else if (status.state == BADGE_WALKIE_RADIO_CALLING) {
+        state_text = "CALLING";
+    } else if (status.state == BADGE_WALKIE_RADIO_SEARCHING) {
+        state_text = "SEARCHING";
+    } else if (status.state == BADGE_WALKIE_RADIO_READY) {
+        state_text = status.peer_name[0] ? status.peer_name : "CONNECTED";
+    }
+    if (status.local_talking) {
+        main_text = "TALKING";
+        state_text = "YOU ARE LIVE";
+    } else if (status.remote_talking) {
+        main_text = "LISTEN";
+    }
+
+    label(parent, "WILDERNESS RADIO", &lv_font_montserrat_14,
+          COLOR_GREEN, 14, 15);
+    lv_obj_t *frame = block(parent, 32, 54, 176, 156, accent);
+    lv_obj_set_style_radius(frame, 24, 0);
+    lv_obj_t *inside = block(frame, 4, 4, 168, 148, COLOR_BLACK);
+    lv_obj_set_style_radius(inside, 21, 0);
+    centered_label(parent, main_text, &lv_font_montserrat_28, accent, 91);
+    centered_label(parent, state_text, &lv_font_montserrat_14,
+                   status.state == BADGE_WALKIE_RADIO_ERROR ? COLOR_PAPER :
+                                                              COLOR_GREEN,
+                   151);
+    centered_label(parent, "HOLD UP TO TALK", &lv_font_montserrat_14,
+                   COLOR_PAPER, 237);
+    centered_label(parent, "OK = BADGE", &lv_font_montserrat_14,
+                   COLOR_PAPER, 276);
+}
+
 static void render(void)
 {
     lv_obj_t *old = s_screen;
@@ -211,7 +259,10 @@ static void render(void)
     lv_obj_set_style_border_width(s_screen, 0, 0);
     lv_obj_set_style_pad_all(s_screen, 0, 0);
 
-    if (badge_voice_logic_is_active(&s_voice_logic)) {
+    if (badge_walkie_logic_is_active(&s_walkie_logic)) {
+        page_walkie(s_screen);
+        add_battery(s_screen);
+    } else if (badge_voice_logic_is_active(&s_voice_logic)) {
         page_voice(s_screen);
         add_battery(s_screen);
     } else if (s_show_wechat_qr) {
@@ -231,6 +282,38 @@ static void render(void)
     if (old) {
         lv_obj_delete(old);
     }
+}
+
+static void walkie_status_changed(void *context)
+{
+    (void)context;
+    badge_walkie_radio_status_t status;
+    badge_walkie_radio_get_status(&status);
+    bool active = badge_walkie_logic_is_active(&s_walkie_logic);
+    bool incoming = status.session_active && status.incoming_call && !active;
+    bool ended = active && !status.session_active &&
+                 (status.state == BADGE_WALKIE_RADIO_STANDBY ||
+                  status.state == BADGE_WALKIE_RADIO_OFF);
+    if (!active && !incoming) return;
+    if (!bsp_lvgl_lock(100)) return;
+    if (incoming && badge_walkie_logic_remote_enter(&s_walkie_logic)) {
+        s_show_wechat_qr = false;
+        s_voice_sent = false;
+        (void)badge_idle_logic_on_event(&s_idle_logic, BADGE_IDLE_EVENT_CLICK);
+        bsp_display_backlight(BADGE_BL_ACTIVE_PERCENT);
+        restart_idle_timer(BADGE_VOICE_IDLE_DIM_SECONDS);
+        ESP_LOGI(TAG, "Incoming radio call from %s; page opened",
+                 status.peer_name[0] ? status.peer_name : "peer");
+        render();
+    } else if (ended && badge_walkie_logic_remote_exit(&s_walkie_logic)) {
+        s_page = 0;
+        restart_idle_timer(BADGE_IDLE_DIM_SECONDS);
+        ESP_LOGI(TAG, "Radio session ended remotely; badge page restored");
+        render();
+    } else if (badge_walkie_logic_is_active(&s_walkie_logic)) {
+        render();
+    }
+    bsp_lvgl_unlock();
 }
 
 /* This callback only touches the atomic idle state and backlight PWM. */
@@ -283,7 +366,8 @@ bool wilderness_badge_activity(bsp_btn_ev_t ev)
     bool forward = badge_idle_logic_on_event(&s_idle_logic,
                                               idle_event_from_button(ev));
     bsp_display_backlight(BADGE_BL_ACTIVE_PERCENT);
-    restart_idle_timer(badge_voice_logic_is_active(&s_voice_logic)
+    restart_idle_timer((badge_voice_logic_is_active(&s_voice_logic) ||
+                        badge_walkie_logic_is_active(&s_walkie_logic))
                            ? BADGE_VOICE_IDLE_DIM_SECONDS
                            : BADGE_IDLE_DIM_SECONDS);
     if (was_off) {
@@ -300,6 +384,16 @@ void wilderness_badge_start(bool battery_ready)
     s_voice_sent = false;
     badge_idle_logic_init(&s_idle_logic);
     badge_voice_logic_init(&s_voice_logic);
+    badge_walkie_logic_init(&s_walkie_logic);
+    esp_err_t walkie_status = badge_walkie_radio_init(BADGE_PERSON_NAME,
+                                                       walkie_status_changed,
+                                                       NULL);
+    if (walkie_status != ESP_OK) {
+        ESP_LOGW(TAG, "Walkie-talkie unavailable: %s",
+                 esp_err_to_name(walkie_status));
+    } else {
+        badge_walkie_radio_resume();
+    }
     render();
 
     const esp_timer_create_args_t timer_args = {
@@ -322,6 +416,45 @@ void wilderness_badge_key(bsp_btn_t btn, bsp_btn_ev_t ev)
             render();
         }
         return;
+    }
+
+    badge_walkie_event_t walkie_event;
+    switch (ev) {
+    case BSP_BTN_PRESS: walkie_event = BADGE_WALKIE_EVENT_PRESS; break;
+    case BSP_BTN_RELEASE: walkie_event = BADGE_WALKIE_EVENT_RELEASE; break;
+    case BSP_BTN_DOUBLE: walkie_event = BADGE_WALKIE_EVENT_DOUBLE; break;
+    case BSP_BTN_LONG: walkie_event = BADGE_WALKIE_EVENT_LONG; break;
+    case BSP_BTN_CLICK:
+    default: walkie_event = BADGE_WALKIE_EVENT_CLICK; break;
+    }
+
+    bool walkie_was_active = badge_walkie_logic_is_active(&s_walkie_logic);
+    if (walkie_was_active || !badge_voice_logic_is_active(&s_voice_logic)) {
+        badge_walkie_action_t walkie_actions = badge_walkie_logic_handle(
+            &s_walkie_logic, (badge_walkie_key_t)btn, walkie_event);
+        if (walkie_actions & BADGE_WALKIE_ACTION_ENTER) {
+            s_show_wechat_qr = false;
+            (void)badge_ble_mic_set_streaming(false);
+            (void)badge_ble_mic_set_enabled(false);
+            badge_walkie_radio_enter();
+            restart_idle_timer(BADGE_VOICE_IDLE_DIM_SECONDS);
+            ESP_LOGI(TAG, "Walkie-talkie mode entered");
+        }
+        if (walkie_actions & BADGE_WALKIE_ACTION_PTT_DOWN) {
+            (void)badge_walkie_radio_set_talking(true);
+        }
+        if (walkie_actions & BADGE_WALKIE_ACTION_PTT_UP) {
+            (void)badge_walkie_radio_set_talking(false);
+        }
+        if (walkie_actions & BADGE_WALKIE_ACTION_EXIT) {
+            badge_walkie_radio_exit();
+            s_page = 0;
+            restart_idle_timer(BADGE_IDLE_DIM_SECONDS);
+            ESP_LOGI(TAG, "Walkie-talkie mode exited");
+        }
+        if (walkie_actions & BADGE_WALKIE_ACTION_REDRAW) render();
+        if (walkie_was_active ||
+            (walkie_actions & BADGE_WALKIE_ACTION_ENTER)) return;
     }
 
     badge_voice_key_t voice_key = (badge_voice_key_t)btn;
@@ -352,6 +485,7 @@ void wilderness_badge_key(bsp_btn_t btn, bsp_btn_ev_t ev)
     if (actions & BADGE_VOICE_ACTION_ENTER) {
         s_show_wechat_qr = false;
         s_voice_sent = false;
+        badge_walkie_radio_suspend();
         (void)badge_ble_mic_set_enabled(true);
         restart_idle_timer(BADGE_VOICE_IDLE_DIM_SECONDS);
         ESP_LOGI(TAG, "Voice input mode entered");
@@ -374,6 +508,7 @@ void wilderness_badge_key(bsp_btn_t btn, bsp_btn_ev_t ev)
     if (actions & BADGE_VOICE_ACTION_EXIT) {
         (void)badge_ble_mic_set_streaming(false);
         (void)badge_ble_mic_set_enabled(false);
+        badge_walkie_radio_resume();
         s_page = 0;
         s_voice_sent = false;
         restart_idle_timer(BADGE_IDLE_DIM_SECONDS);

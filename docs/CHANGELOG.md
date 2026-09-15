@@ -6,7 +6,11 @@
 
 ## Unreleased
 
-- Changed the BLE microphone lifecycle so `WildernessMic` advertises and accepts a Mac connection only on the voice-input page. Returning to the badge now stops capture, disconnects the Mac, closes the audio codec, and stops BLE advertising.
+- Changed the BLE microphone lifecycle so `Wilderness Mic` advertises and accepts a Mac connection only on the voice-input page. Returning to the badge or entering Radio now stops capture, disconnects the Mac, and stops BLE advertising to avoid 2.4 GHz coexistence interference.
+- Added protocol V2 low-power ESP-NOW call standby: holding `DOWN` sends a 1.5-second call burst that wakes a nearby compatible badge and opens Radio automatically, so the recipient does not need to enter the page first.
+- Added bidirectional `CALL_ACK` and `HANGUP`; either badge returns both ends to standby with `OK`, and sessions without voice activity end after 30 seconds.
+- Added deterministic simultaneous-PTT arbitration, peer timeout/recovery, independent 25 ms IMA-ADPCM frames, and shared audio ownership with BLE microphone mode.
+- Reused the 60-second dim delay for the radio page. Protocol V2 remains an unencrypted fixed broadcast room intended only for two-device lab validation.
 - Required an expected device MAC before protected application-only flashing and made the backup/readback baud configurable.
 
 ## 0.1.0 - 2026-09-11

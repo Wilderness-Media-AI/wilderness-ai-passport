@@ -4,9 +4,9 @@
 
 # WILDERNESS AI Passport
 
-这是一个可复用的 AI Passport 项目，把 FoloToy AI Passport 同时变成 WILDERNESS 员工数字工牌，以及控制 Mac 语音输入的随身麦克风。
+这是一个可复用的 AI Passport 项目，把 FoloToy AI Passport 同时变成 WILDERNESS 员工数字工牌、控制 Mac 语音输入的随身麦克风，以及近距离直连对讲机。
 
-## 两个功能
+## 主要功能
 
 ### 工牌模式
 
@@ -25,6 +25,16 @@
 - 音频为 16 kHz、16-bit、单声道，每 100 ms 独立编码为 IMA-ADPCM 数据块。
 
 当前 Mac companion 面向 macOS，已经通过 BlackHole 2ch 接入豆包输入法，也会保存 WAV 录音用于排查音频链路。
+
+### 对讲机模式（实验版）
+
+- 工牌模式保持低功耗呼叫待机。长按 `DOWN` 会连续发送约 1.5 秒呼叫，附近兼容工牌收到后会自动亮屏并进入 WILDERNESS RADIO。
+- 按住 `UP` 讲话，松开后收听；短按 `OK` 返回工牌。
+- 设备使用 ESP-NOW 在 Wi-Fi 信道 6 直接通信，不依赖手机、Mac、路由器或云服务。
+- 任意一方短按 `OK` 都会结束会话，双方同时回到工牌待机；30 秒无语音活动也会自动结束。
+- 工牌待机每 500 ms 打开约 40 ms 呼叫监听窗口。工牌和 Radio 模式不开启 BLE 麦克风；进入语音输入页时则暂停 Radio 待机。
+- 音频为 16 kHz、16-bit、单声道，每个 25 ms 独立编码为 IMA-ADPCM；对讲页 60 秒后才降亮。
+- V2 使用固定、未加密的广播房间，仅用于两台设备实验室验证。在完成加密配对和单播之前，不能当作私密通信，也不应直接投入公开活动。
 
 ## 环境要求
 
@@ -88,7 +98,7 @@ swiftc -warnings-as-errors companion-macos/WildernessMic.swift \
   -framework CoreBluetooth -o /tmp/WildernessMic
 ```
 
-固件构建通过不等于真机验收。每台设备还需检查启动日志、屏幕、按键、蓝牙重连、麦克风音频、豆包实际落字、低亮策略和受保护的 `cardid`。
+固件构建通过不等于真机验收。每台设备还需检查启动日志、屏幕、按键、蓝牙重连、麦克风音频、豆包实际落字、低亮策略、对讲发现与双向音频，以及受保护的 `cardid`。
 
 ## 许可与署名
 

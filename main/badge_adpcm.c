@@ -99,3 +99,33 @@ size_t badge_adpcm_encode(badge_adpcm_state_t *state, const int16_t *pcm,
     }
     return required;
 }
+
+size_t badge_adpcm_decode(const uint8_t *input, size_t input_bytes,
+                          size_t samples, int16_t *pcm, size_t pcm_capacity)
+{
+    if (!input || !pcm || samples == 0 || pcm_capacity < samples ||
+        input_bytes < 4 + samples / 2 || input[2] > 88) {
+        return 0;
+    }
+
+    badge_adpcm_state_t state = {
+        .predictor = (int16_t)((uint16_t)input[0] | ((uint16_t)input[1] << 8)),
+        .index = input[2],
+    };
+    pcm[0] = state.predictor;
+    for (size_t i = 1; i < samples; ++i) {
+        uint8_t packed = input[4 + (i - 1) / 2];
+        uint8_t code = (i & 1) ? (packed & 0x0f) : (packed >> 4);
+        int step = s_steps[state.index];
+        int32_t delta = step >> 3;
+        if (code & 4) delta += step;
+        if (code & 2) delta += step >> 1;
+        if (code & 1) delta += step >> 2;
+        state.predictor = clamp_sample((int32_t)state.predictor +
+                                       ((code & 8) ? -delta : delta));
+        state.index = (uint8_t)clamp_index((int)state.index +
+                                           s_index_delta[code]);
+        pcm[i] = state.predictor;
+    }
+    return samples;
+}

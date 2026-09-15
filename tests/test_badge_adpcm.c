@@ -17,11 +17,18 @@ int main(void)
         0xe7, 0xff, 0x68, 0x08, 0x08, 0x08,
     };
     badge_adpcm_state_t state;
+    int16_t decoded[16] = { 0 };
     badge_adpcm_reset(&state);
     assert(badge_adpcm_encode(&state, input, 16, encoded, sizeof(encoded)) == 12);
     assert(memcmp(encoded, expected, sizeof(expected)) == 0);
+    assert(badge_adpcm_decode(encoded, sizeof(encoded), 16, decoded, 16) == 16);
+    assert(decoded[0] == 0);
+    assert(decoded[1] == 11);
+    assert(decoded[15] < decoded[14]);
     assert(badge_adpcm_encode(NULL, input, 16, encoded, sizeof(encoded)) == 0);
     assert(badge_adpcm_encode(&state, input, 16, encoded, sizeof(encoded) - 1) == 0);
+    assert(badge_adpcm_decode(NULL, sizeof(encoded), 16, decoded, 16) == 0);
+    assert(badge_adpcm_decode(encoded, sizeof(encoded) - 1, 16, decoded, 16) == 0);
     puts("test_badge_adpcm: OK");
     return 0;
 }
