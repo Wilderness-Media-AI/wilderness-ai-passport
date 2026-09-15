@@ -33,6 +33,9 @@ Connect one device at a time and resolve its current `/dev/cu.usbmodem*` port. T
 5. Verifies the application bytes.
 6. Reads `cardid` again and requires an exact match.
 
+Pass the MAC printed during the read-only identity check as `--expected-mac`.
+The helper refuses to continue when the connected device does not match.
+
 Never run `idf.py erase-flash` on a provisioned device.
 
 ## 4. Install the macOS companion

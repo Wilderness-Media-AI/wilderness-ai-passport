@@ -7,6 +7,7 @@
 ## Unreleased
 
 - Changed the BLE microphone lifecycle so `WildernessMic` advertises and accepts a Mac connection only on the voice-input page. Returning to the badge now stops capture, disconnects the Mac, closes the audio codec, and stops BLE advertising.
+- Required an expected device MAC before protected application-only flashing and made the backup/readback baud configurable.
 
 ## 0.1.0 - 2026-09-11
 

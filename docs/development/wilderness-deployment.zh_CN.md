@@ -33,6 +33,9 @@ python3 tools/verify_firmware.py build-employee-name
 5. 校验应用区写入内容。
 6. 再次读取 `cardid`，要求刷前刷后逐字节一致。
 
+请把只读身份检查得到的 MAC 通过 `--expected-mac` 传入。连接设备与目标
+MAC 不一致时，保护脚本会拒绝继续。
+
 已配置设备严禁运行 `idf.py erase-flash`。
 
 ## 4. 安装 macOS companion

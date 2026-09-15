@@ -55,6 +55,7 @@
    ```bash
    ./tools/safe-flash-app.sh \
      --port /dev/cu.usbmodemXXXX \
+     --expected-mac aa:bb:cc:dd:ee:ff \
      --app build-employee-employee-name/Wilderness-AI-Passport.bin
    ```
 

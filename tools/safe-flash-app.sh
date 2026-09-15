@@ -2,20 +2,25 @@
 set -euo pipefail
 
 usage() {
-    echo "Usage: $0 --port /dev/cu.usbmodemXXXX --app path/to/Wilderness-AI-Passport.bin" >&2
+    echo "Usage: $0 --port /dev/cu.usbmodemXXXX --app path/to/Wilderness-AI-Passport.bin --expected-mac aa:bb:cc:dd:ee:ff [--baud 921600]" >&2
 }
 
 port=""
 app_image=""
+expected_mac=""
+baud="921600"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --port) port="${2:-}"; shift 2 ;;
         --app) app_image="${2:-}"; shift 2 ;;
+        --expected-mac) expected_mac="${2:-}"; shift 2 ;;
+        --baud) baud="${2:-}"; shift 2 ;;
         *) usage; exit 2 ;;
     esac
 done
 
-if [[ -z "${port}" || -z "${app_image}" || ! -c "${port}" || ! -f "${app_image}" ]]; then
+if [[ -z "${port}" || -z "${app_image}" || -z "${expected_mac}" || ! -c "${port}" ||
+      ! -f "${app_image}" || ! "${baud}" =~ ^[0-9]+$ ]]; then
     usage
     exit 2
 fi
@@ -44,14 +49,19 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 timestamp="$(date '+%Y%m%dT%H%M%S%z')"
 backup_dir="${repo_root}/device-backups/${timestamp}"
 mkdir -p "${backup_dir}"
+esptool_device=("${esptool[@]}" --chip esp32c3 --port "${port}" --baud "${baud}")
 
-"${esptool[@]}" --chip esp32c3 --port "${port}" read_mac | tee "${backup_dir}/device.txt"
-"${esptool[@]}" --chip esp32c3 --port "${port}" read_flash 0x0 0x800000 "${backup_dir}/full-flash-pre.bin"
-"${esptool[@]}" --chip esp32c3 --port "${port}" read_flash 0x356000 0x4000 "${backup_dir}/cardid-pre.bin"
+"${esptool_device[@]}" read_mac | tee "${backup_dir}/device.txt"
+if ! grep -Fqi "MAC: ${expected_mac}" "${backup_dir}/device.txt"; then
+    echo "ERROR: connected device does not match expected MAC ${expected_mac}; nothing was written" >&2
+    exit 1
+fi
+"${esptool_device[@]}" read_flash 0x0 0x800000 "${backup_dir}/full-flash-pre.bin"
+"${esptool_device[@]}" read_flash 0x356000 0x4000 "${backup_dir}/cardid-pre.bin"
 
-"${esptool[@]}" --chip esp32c3 --port "${port}" write_flash --flash_size 8MB 0x10000 "${app_image}"
-"${esptool[@]}" --chip esp32c3 --port "${port}" verify_flash 0x10000 "${app_image}"
-"${esptool[@]}" --chip esp32c3 --port "${port}" read_flash 0x356000 0x4000 "${backup_dir}/cardid-post.bin"
+"${esptool_device[@]}" write_flash --flash_size 8MB 0x10000 "${app_image}"
+"${esptool_device[@]}" verify_flash 0x10000 "${app_image}"
+"${esptool_device[@]}" read_flash 0x356000 0x4000 "${backup_dir}/cardid-post.bin"
 
 if ! cmp -s "${backup_dir}/cardid-pre.bin" "${backup_dir}/cardid-post.bin"; then
     echo "ERROR: protected cardid changed; stop using this device and preserve ${backup_dir}" >&2
