@@ -2,6 +2,7 @@ set(APP_SRCS
     "main.c"
     "badge_idle_logic.c"
     "badge_voice_logic.c"
+    "badge_audio_owner.c"
     "badge_adpcm.c"
     "badge_ble_mic.c"
     "wilderness_badge.c"

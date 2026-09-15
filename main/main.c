@@ -7,6 +7,7 @@
 #include "wilderness_badge.h"
 
 #include "esp_log.h"
+#include "nvs_flash.h"
 
 static const char *TAG = "wilderness_badge";
 
@@ -27,6 +28,11 @@ static void on_key(bsp_btn_t btn, bsp_btn_ev_t ev, void *user)
 void app_main(void)
 {
     ESP_LOGI(TAG, "WILDERNESS digital badge starting");
+
+    esp_err_t nvs_status = nvs_flash_init();
+    if (nvs_status != ESP_OK) {
+        ESP_LOGW(TAG, "NVS unavailable: %s", esp_err_to_name(nvs_status));
+    }
 
     esp_err_t i2c_status = bsp_i2c_init();
     if (i2c_status != ESP_OK) {

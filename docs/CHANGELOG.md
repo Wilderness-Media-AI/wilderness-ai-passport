@@ -4,6 +4,10 @@
 
 # Changelog
 
+## Unreleased
+
+- Changed the BLE microphone lifecycle so `WildernessMic` advertises and accepts a Mac connection only on the voice-input page. Returning to the badge now stops capture, disconnects the Mac, closes the audio codec, and stops BLE advertising.
+
 ## 0.1.0 - 2026-09-11
 
 - Added the fixed three-page WILDERNESS employee badge with local-only portrait, name, role, and WeChat QR provisioning.

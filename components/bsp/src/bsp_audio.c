@@ -155,6 +155,21 @@ esp_err_t bsp_audio_set_format(uint32_t hz, uint8_t bits, uint8_t ch) {
     return ESP_OK;
 }
 
+esp_err_t bsp_audio_close(void) {
+    if (!s_dev || !s_opened) return ESP_OK;
+    int r = esp_codec_dev_close(s_dev);
+    if (r != 0) {
+        ESP_LOGE(TAG, "esp_codec_dev_close 失败: %d", r);
+        return ESP_FAIL;
+    }
+    s_opened = false;
+    s_hz = 0;
+    s_bits = 0;
+    s_ch = 0;
+    ESP_LOGI(TAG, "codec 已关闭");
+    return ESP_OK;
+}
+
 esp_err_t bsp_audio_write(const void *pcm, size_t bytes) {
     if (!s_dev) return ESP_ERR_INVALID_STATE;
     return esp_codec_dev_write(s_dev, (void *)pcm, bytes) == 0 ? ESP_OK : ESP_FAIL;

@@ -352,6 +352,7 @@ void wilderness_badge_key(bsp_btn_t btn, bsp_btn_ev_t ev)
     if (actions & BADGE_VOICE_ACTION_ENTER) {
         s_show_wechat_qr = false;
         s_voice_sent = false;
+        (void)badge_ble_mic_set_enabled(true);
         restart_idle_timer(BADGE_VOICE_IDLE_DIM_SECONDS);
         ESP_LOGI(TAG, "Voice input mode entered");
     }
@@ -371,6 +372,8 @@ void wilderness_badge_key(bsp_btn_t btn, bsp_btn_ev_t ev)
         ESP_LOGI(TAG, "Badge send: event=%d", s_voice_sent);
     }
     if (actions & BADGE_VOICE_ACTION_EXIT) {
+        (void)badge_ble_mic_set_streaming(false);
+        (void)badge_ble_mic_set_enabled(false);
         s_page = 0;
         s_voice_sent = false;
         restart_idle_timer(BADGE_IDLE_DIM_SECONDS);

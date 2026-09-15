@@ -1,6 +1,7 @@
 #include "badge_ble_mic.h"
 
 #include "badge_adpcm.h"
+#include "badge_audio_owner.h"
 #include "bsp_audio.h"
 
 #include "esp_log.h"
@@ -45,6 +46,8 @@ static volatile uint16_t s_connection = BLE_HS_CONN_HANDLE_NONE;
 static volatile uint16_t s_input_connection = BLE_HS_CONN_HANDLE_NONE;
 static volatile uint16_t s_audio_connection = BLE_HS_CONN_HANDLE_NONE;
 static volatile bool s_stream_requested;
+static volatile bool s_enabled;
+static volatile bool s_host_synced;
 static uint8_t s_address_type;
 static uint8_t s_block_sequence;
 static SemaphoreHandle_t s_stream_signal;
@@ -66,13 +69,15 @@ static void start_advertising(void);
 
 bool badge_ble_mic_is_ready(void)
 {
-    return s_audio_connection != BLE_HS_CONN_HANDLE_NONE &&
+    return s_enabled && s_audio_connection != BLE_HS_CONN_HANDLE_NONE &&
            s_input_connection != BLE_HS_CONN_HANDLE_NONE;
 }
 
 bool badge_ble_mic_set_streaming(bool start)
 {
-    if (start && s_audio_connection == BLE_HS_CONN_HANDLE_NONE) return false;
+    if (start && (!s_enabled || s_audio_connection == BLE_HS_CONN_HANDLE_NONE)) {
+        return false;
+    }
     s_stream_requested = start;
     if (start && s_stream_signal) xSemaphoreGive(s_stream_signal);
     return !start || s_audio_connection != BLE_HS_CONN_HANDLE_NONE;
@@ -80,7 +85,8 @@ bool badge_ble_mic_set_streaming(bool start)
 
 bool badge_ble_mic_send_input_event(badge_ble_input_event_t event)
 {
-    if (!s_input_queue || s_input_connection == BLE_HS_CONN_HANDLE_NONE) return false;
+    if (!s_enabled || !s_input_queue ||
+        s_input_connection == BLE_HS_CONN_HANDLE_NONE) return false;
     uint8_t value = (uint8_t)event;
     return xQueueSend(s_input_queue, &value, 0) == pdTRUE;
 }
@@ -215,9 +221,15 @@ static void audio_task(void *argument)
     for (;;) {
         xSemaphoreTake(s_stream_signal, portMAX_DELAY);
         if (!s_stream_requested) continue;
+        if (!badge_audio_owner_claim(BADGE_AUDIO_OWNER_BLE_MIC)) {
+            ESP_LOGW(TAG, "Microphone unavailable while another mode owns audio");
+            s_stream_requested = false;
+            continue;
+        }
         if (bsp_audio_init() != ESP_OK || bsp_audio_set_format(16000, 16, 1) != ESP_OK) {
             ESP_LOGE(TAG, "Microphone initialization failed");
             s_stream_requested = false;
+            badge_audio_owner_release(BADGE_AUDIO_OWNER_BLE_MIC);
             continue;
         }
         badge_adpcm_reset(&encoder);
@@ -235,6 +247,8 @@ static void audio_task(void *argument)
             }
         }
         s_stream_requested = false;
+        (void)bsp_audio_close();
+        badge_audio_owner_release(BADGE_AUDIO_OWNER_BLE_MIC);
         ESP_LOGI(TAG, "Microphone streaming stopped");
     }
 }
@@ -260,7 +274,7 @@ static int gap_event(struct ble_gap_event *event, void *argument)
         s_connection = BLE_HS_CONN_HANDLE_NONE;
         s_input_connection = BLE_HS_CONN_HANDLE_NONE;
         s_audio_connection = BLE_HS_CONN_HANDLE_NONE;
-        ESP_LOGI(TAG, "Mac disconnected; advertising restarted");
+        ESP_LOGI(TAG, "Mac disconnected");
         start_advertising();
         break;
     case BLE_GAP_EVENT_SUBSCRIBE:
@@ -287,6 +301,10 @@ static int gap_event(struct ble_gap_event *event, void *argument)
 
 static void start_advertising(void)
 {
+    if (!s_enabled || !s_host_synced ||
+        s_connection != BLE_HS_CONN_HANDLE_NONE || ble_gap_adv_active()) {
+        return;
+    }
     struct ble_hs_adv_fields fields = { 0 };
     fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
     fields.name = (uint8_t *)MIC_DEVICE_NAME;
@@ -326,6 +344,7 @@ static void host_sync(void)
         ESP_LOGE(TAG, "BLE address setup failed: %d", rc);
         return;
     }
+    s_host_synced = true;
     start_advertising();
 }
 
@@ -334,6 +353,35 @@ static void host_task(void *argument)
     (void)argument;
     nimble_port_run();
     nimble_port_freertos_deinit();
+}
+
+bool badge_ble_mic_set_enabled(bool enabled)
+{
+    s_enabled = enabled;
+    if (enabled) {
+        start_advertising();
+        ESP_LOGI(TAG, "Voice page active; BLE microphone enabled");
+        return true;
+    }
+
+    s_stream_requested = false;
+    if (s_input_queue) xQueueReset(s_input_queue);
+    if (ble_gap_adv_active()) {
+        int rc = ble_gap_adv_stop();
+        if (rc != 0 && rc != BLE_HS_EALREADY) {
+            ESP_LOGW(TAG, "Advertising stop failed: %d", rc);
+        }
+    }
+    uint16_t connection = s_connection;
+    if (connection != BLE_HS_CONN_HANDLE_NONE) {
+        int rc = ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
+        if (rc != 0 && rc != BLE_HS_ENOTCONN) {
+            ESP_LOGW(TAG, "Mac disconnect request failed: %d", rc);
+            return false;
+        }
+    }
+    ESP_LOGI(TAG, "Voice page inactive; BLE microphone disabled");
+    return true;
 }
 
 esp_err_t badge_ble_mic_init(void)
@@ -385,6 +433,6 @@ esp_err_t badge_ble_mic_init(void)
     }
 
     nimble_port_freertos_init(host_task);
-    ESP_LOGI(TAG, "BLE microphone ready; badge input and Mac CTRL are available");
+    ESP_LOGI(TAG, "BLE microphone initialized; waiting for voice page");
     return ESP_OK;
 }
